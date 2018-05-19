@@ -1,11 +1,136 @@
 ﻿
+# Naming Conventions
+#
+# Microsoft:
+# - https://msdn.microsoft.com/en-us/library/ms714428(v=vs.85).aspx
+# 
+# https://github.com/PoshCode/PowerShellPracticeAndStyle
+# - Capitalization guidelines: https://github.com/PoshCode/PowerShellPracticeAndStyle/issues/36
+
 # Improvements
-# - Work with classes: https://xainey.github.io/2016/powershell-classes-and-concepts/
+# - Use class ConfluenceScraper instead of Get-ConfluenceDownloadUri
+
+class IE {
+    
+    $ie
+    [int]$waitMilliseconds = 100
+
+    IE() {
+        $this.ie = New-Object -ComObject 'internetExplorer.Application'
+        $this.ie.Visible= $true
+    }
+
+    NavigateAndWait([string]$url) {
+        # https://docs.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/platform-apis/aa752093(v=vs.85)
+        $this.ie.Navigate($url)
+        $this.Wait()
+    }
+
+    ClickAndWaitById([string]$id) {
+        $element=$this.ie.Document.getElementByID($id)
+        $element.Click()
+        $this.Wait()
+    }
+
+    # Example: <input name=confirm>
+    # ClickAndWait("input", "confirm")
+    ClickAndWaitByTagNameAndName([string]$tagName, [string]$name) {
+        $elements=$this.ie.Document.getElementsByTagName($tagName)
+        $element = $elements | where-object {$_.Name -eq $name}
+        $element.click()
+        $this.Wait()
+    }
+
+    # Example: 
+    # WaitByTagNameAndClass("a", 'space-export-download-path') waits for an element
+    #   <a class="space-export-download-path">
+    [object] WaitByTagNameAndClass([string]$tagName, [string]$classValue) {
+        $element = $null
+        do {
+            $elements=$this.ie.Document.getElementsByTagName($tagName)
+
+#TASK: The where clause fails if there is not attribute node with name 'class'. Check the existance of the attribute node first.
+
+            $element = $elements | where-object {$_.getAttributeNode('class').Value -eq $classValue}
+            Start-Sleep -Milliseconds $this.waitMilliseconds;
+        } while (!($element))
+        return $element
+    }
+
+    ClickRadio0ByTagNameAndName([string]$tagName, [string]$name) {
+        # Select radio buttons:
+        # https://social.technet.microsoft.com/Forums/windowsserver/en-US/361fa844-3170-46ff-80b3-37ae4ae40f07/power-shell-script-how-to-selectclick-a-radio-button-?forum=winserverpowershell
+        $myradios = $this.ie.Document.getElementsByTagName($tagName) | ? {$_.type -eq 'radio' -and $_.name -eq $name}
+        $x = 0 #specific ridio button 
+        $myradios[$x].setActive()
+        $myradios[$x].click()
+    }
+
+    [object] GetElementById([string]$id) {
+        return $this.ie.Document.getElementByID($id)
+    }
+
+    Wait() {
+        while ($this.ie.Busy -eq $true) {
+            Start-Sleep -Milliseconds $this.waitMilliseconds;
+        }   
+    }
+
+    Close() {
+        $this.ie.quit();
+    }
+}
+
+class ConfluenceScraper {
+    [IE]$ie;
+
+    ConfluenceScraper([IE]$ie) {
+        $this.ie = $ie
+    }
+
+    LoginAndWait($credential) {
+        [string]$username = $credential.UserName
+        [string]$password = $credential.GetNetworkCredential().Password
+
+        $this.ie.NavigateAndWait("https://sife-net.htwchur.ch/login.action")
+
+        
+        # Login
+        $usernamefield = $this.ie.getElementByID('os_username')
+        $usernamefield.value = $username
+
+        $passwordfield = $this.ie.getElementByID('os_password')
+        $passwordfield.value = $password
+
+        $Link=$this.ie.ClickAndWaitById("loginButton")
+    }
+
+    [string]BackupUri([string]$uri) {
+        # Export
+        $this.ie.NavigateAndWait($uri)
+
+        # Need some more time to build the radio buttons
+        Start-Sleep -Milliseconds 500;
+        $this.ie.ClickRadio0ByTagNameAndName('input', 'format')
+        $this.ie.ClickAndWaitByTagNameAndName("input", "confirm")
+
+        $this.ie.ClickAndWaitByTagNameAndName("input", "confirm")
+
+        $element = $this.ie.WaitByTagNameAndClass("a", 'space-export-download-path')
+        $uri = $element.HREF
+
+        return $uri
+    }
+  
+    Close() {
+        $this.ie.Close()    
+    }
+}
 
 # Config
 [string]$userName = 'martin.studer'
-[string[]]$confluenceProjectShortcuts = @("PROR", "RW", "QIDLUW")
-[string[]]$jiraProjectShortcuts = @("PROR", "RW", "QUAL")
+[string[]]$confluenceProjectShortcuts = @("PROR", "RW", "QIDLUW", "RL")
+[string[]]$jiraProjectShortcuts = @("PROR", "RW", "QUAL", "RL")
 
 # Globals
 [string]$path = Split-Path -Path $MyInvocation.MyCommand.Path
@@ -58,6 +183,8 @@ function Get-ConfluenceDownloadUri([string]$projectShortcut, $credential) {
     $ie.Navigate("https://sife-net.htwchur.ch/spaces/exportspacewelcome.action?key=$projectShortcut")
     while ($ie.Busy -eq $true) {Start-Sleep -Milliseconds 100;}   
 
+    Start-Sleep -Milliseconds 200;
+
     # Select radio buttons:
     # https://social.technet.microsoft.com/Forums/windowsserver/en-US/361fa844-3170-46ff-80b3-37ae4ae40f07/power-shell-script-how-to-selectclick-a-radio-button-?forum=winserverpowershell
     $myradios = $ie.Document.getElementsByTagName('input') | ? {$_.type -eq 'radio' -and $_.name -eq 'format'}
@@ -77,20 +204,20 @@ function Get-ConfluenceDownloadUri([string]$projectShortcut, $credential) {
 
     while ($ie.Busy -eq $true) {Start-Sleep -Milliseconds 100;}   
 
-    Write-Host "Waiting ..."
     do {
         $i=$ie.Document.getElementsByTagName("a")
+
+#TASK: The where clause fails if there is not attribute node with name 'class'. Check the existance of the attribute node first.
+
         $j = $i | where-object {$_.getAttributeNode('class').Value -eq 'space-export-download-path'}
         Start-Sleep -Milliseconds 100;
     } while (!($j))
-    Write-Host "Done"
     
     $uri = $j.HREF
 
     $ie.quit()
 
     return $uri
-
 }
 
 
@@ -104,6 +231,22 @@ function Save-ConfluenceBackup([string]$projectShortcut, [string]$outputDir, $ur
     Invoke-WebRequest $uri -OutFile $outputFilepath -Headers $headers
 }
 
+function Save-PrivateConfluenceSpace($credential, [string]$outputDir) {
+    [string]$userName = $credential.UserName
+    [string]$outputFilename = "$userName.zip"
+    [string]$outputFilepath = Join-Path -Path $outputDir -ChildPath $outputFilename
+
+    $headers = Build-Headers($credential)
+
+    [IE]$ie = New-Object IE
+    [ConfluenceScraper] $scraper = New-Object ConfluenceScraper($ie)
+    $scraper.LoginAndWait($credential)
+    [string]$start = "https://sife-net.htwchur.ch/spaces/exportspacewelcome.action?key=~$userName"
+    [string]$uri = $scraper.BackupUri($start)
+    $scraper.Close()
+
+    Invoke-WebRequest $uri -OutFile $outputFilepath -Headers $headers
+}
 
 function Get-JiraBackup([string]$projectShortcut, [string]$outputDir, $credential) {
     [string]$outputFilename = "$projectShortcut.doc"
@@ -122,7 +265,7 @@ function Get-JiraBackup([string]$projectShortcut, [string]$outputDir, $credentia
 function Save-AllJiraBackups($credential, $projectShortcuts) {
     [string]$outputPath = Join-Path -Path $path -ChildPath 'Jira'
     [string]$outputTimestampPath = Join-Path -Path $outputPath -ChildPath $timestamp
-    mkdir $outputTimestampPath
+    mkdir $outputTimestampPath # https://superuser.com/questions/1153961/powershell-silent-mkdir/1154277exi
 
     foreach ($projectShortcut in $projectShortcuts) {
         JiraBackup -projectShortcut $projectShortcut -outputDir $outputTimestampPath -credential $credential
@@ -132,11 +275,12 @@ function Save-AllJiraBackups($credential, $projectShortcuts) {
 function Save-AllConfluenceBackups($projectShortcuts, $credential) {
     [string]$outputPath = Join-Path -Path $path -ChildPath 'Confluence'
     [string]$outputPathTimestampPath = Join-Path -Path $outputPath -ChildPath $timestamp
-    mkdir $outputPathTimestampPath
+    mkdir $outputPathTimestampPath > $null # https://superuser.com/questions/1153961/powershell-silent-mkdir/1154277
     foreach ($projectShortcut in $confluenceProjectShortcuts) {
         $uri = Get-ConfluenceDownloadUri -projectShortcut $projectShortcut -credential $confluenceCredential
         Save-ConfluenceBackup -projectShortcut $projectShortcut -outputDir $outputPathTimestampPath -uri $uri -credential $confluenceCredential
     }
+    Save-PrivateConfluenceSpace -credential $confluenceCredential -outputDir $outputPathTimestampPath 
 }
 
 $confluenceCredential = Get-Credential -Message 'Confluence' -UserName $userName
