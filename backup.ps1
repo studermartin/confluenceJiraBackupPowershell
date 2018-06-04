@@ -263,24 +263,33 @@ function Get-JiraBackup([string]$projectShortcut, [string]$outputDir, $credentia
 }
 
 function Save-AllJiraBackups($credential, $projectShortcuts) {
+    Write-Host "Backup jira projects:"
+
     [string]$outputPath = Join-Path -Path $path -ChildPath 'Jira'
     [string]$outputTimestampPath = Join-Path -Path $outputPath -ChildPath $timestamp
     mkdir $outputTimestampPath # https://superuser.com/questions/1153961/powershell-silent-mkdir/1154277exi
 
     foreach ($projectShortcut in $projectShortcuts) {
+        Write-Host "Backup $projectShortcut..."
         JiraBackup -projectShortcut $projectShortcut -outputDir $outputTimestampPath -credential $credential
+        Write-Host "done."
     }
+    Write-Host "Backup jira projects done."
 }
 
 function Save-AllConfluenceBackups($projectShortcuts, $credential) {
+    Write-Host "Backup confluence spaces:"
     [string]$outputPath = Join-Path -Path $path -ChildPath 'Confluence'
     [string]$outputPathTimestampPath = Join-Path -Path $outputPath -ChildPath $timestamp
     mkdir $outputPathTimestampPath > $null # https://superuser.com/questions/1153961/powershell-silent-mkdir/1154277
     foreach ($projectShortcut in $confluenceProjectShortcuts) {
         $uri = Get-ConfluenceDownloadUri -projectShortcut $projectShortcut -credential $confluenceCredential
+        Write-Host "Backup $projectShortcut..."
         Save-ConfluenceBackup -projectShortcut $projectShortcut -outputDir $outputPathTimestampPath -uri $uri -credential $confluenceCredential
+        Write-Host "done."
     }
     Save-PrivateConfluenceSpace -credential $confluenceCredential -outputDir $outputPathTimestampPath 
+    Write-Host "Backup confluence spaces done."
 }
 
 $confluenceCredential = Get-Credential -Message 'Confluence' -UserName $userName
