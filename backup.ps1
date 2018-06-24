@@ -169,14 +169,16 @@ function Get-ConfluenceDownloadUri([string]$projectShortcut, $credential) {
 
     # Login
     $usernamefield = $ie.Document.getElementByID('os_username')
-    $usernamefield.value = $username
+    if ($usernamefield) {
+        $usernamefield.value = $username
 
-    $passwordfield = $ie.Document.getElementByID('os_password')
-    $passwordfield.value = $password
+        $passwordfield = $ie.Document.getElementByID('os_password')
+        $passwordfield.value = $password
 
-    $Link=$ie.Document.getElementByID("loginButton")
-    $Link.click()
-    while ($ie.Busy -eq $true) {Start-Sleep -Milliseconds 100;}   
+        $Link=$ie.Document.getElementByID("loginButton")
+        $Link.click()
+        while ($ie.Busy -eq $true) {Start-Sleep -Milliseconds 100;}   
+    }
     
     # Export
 
