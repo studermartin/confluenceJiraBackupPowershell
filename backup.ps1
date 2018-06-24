@@ -129,8 +129,8 @@ class ConfluenceScraper {
 
 # Config
 [string]$userName = 'martin.studer'
-[string[]]$confluenceProjectShortcuts = @("PROR", "RW", "QIDLUW", "RL")
-[string[]]$jiraProjectShortcuts = @("PROR", "RW", "QUAL", "RL")
+[string[]]$confluenceProjectShortcuts = @("BLC", "PROR", "RW", "QIDLUW", "RL")
+[string[]]$jiraProjectShortcuts = @("BLC", "PROR", "RW", "QUAL", "RL")
 
 # Globals
 [string]$path = Split-Path -Path $MyInvocation.MyCommand.Path
