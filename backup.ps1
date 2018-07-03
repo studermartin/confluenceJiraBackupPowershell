@@ -94,15 +94,19 @@ class ConfluenceScraper {
 
         $this.ie.NavigateAndWait("https://sife-net.htwchur.ch/login.action")
 
-        
+
         # Login
         $usernamefield = $this.ie.getElementByID('os_username')
-        $usernamefield.value = $username
+        if ($usernamefield) {
+            $usernamefield.value = $username
 
-        $passwordfield = $this.ie.getElementByID('os_password')
-        $passwordfield.value = $password
+            $passwordfield = $this.ie.getElementByID('os_password')
+            $passwordfield.value = $password
 
-        $Link=$this.ie.ClickAndWaitById("loginButton")
+            $Link=$this.ie.getElementByID("loginButton")
+            $Link.click()
+            while ($this.ie.Busy -eq $true) {Start-Sleep -Milliseconds 100;}   
+        }
     }
 
     [string]BackupUri([string]$uri) {
@@ -110,7 +114,7 @@ class ConfluenceScraper {
         $this.ie.NavigateAndWait($uri)
 
         # Need some more time to build the radio buttons
-        Start-Sleep -Milliseconds 500;
+        Start-Sleep -Milliseconds 2000;
         $this.ie.ClickRadio0ByTagNameAndName('input', 'format')
         $this.ie.ClickAndWaitByTagNameAndName("input", "confirm")
 
@@ -161,53 +165,28 @@ function Get-ConfluenceDownloadUri([string]$projectShortcut, $credential) {
     [string]$username = $credential.UserName
     [string]$password = $credential.GetNetworkCredential().Password
 
-    $ie = New-Object -ComObject 'internetExplorer.Application'
-    $ie.Visible= $true
+    [IE]$ie = New-Object IE
+    [ConfluenceScraper] $scraper = New-Object ConfluenceScraper($ie)
 
-    $ie.Navigate("https://sife-net.htwchur.ch/login.action")
-    while ($ie.Busy -eq $true) {Start-Sleep -Milliseconds 100;}   
+    $scraper.LoginAndWait($credential)
 
-    # Login
-    $usernamefield = $ie.Document.getElementByID('os_username')
-    if ($usernamefield) {
-        $usernamefield.value = $username
-
-        $passwordfield = $ie.Document.getElementByID('os_password')
-        $passwordfield.value = $password
-
-        $Link=$ie.Document.getElementByID("loginButton")
-        $Link.click()
-        while ($ie.Busy -eq $true) {Start-Sleep -Milliseconds 100;}   
-    }
+    Start-Sleep -Milliseconds 2000;
     
     # Export
+    $scraper.ie.NavigateAndWait("https://sife-net.htwchur.ch/spaces/exportspacewelcome.action?key=$projectShortcut")
 
-    $ie.Navigate("https://sife-net.htwchur.ch/spaces/exportspacewelcome.action?key=$projectShortcut")
-    while ($ie.Busy -eq $true) {Start-Sleep -Milliseconds 100;}   
-
-    Start-Sleep -Milliseconds 200;
+    Start-Sleep -Milliseconds 2000;
 
     # Select radio buttons:
     # https://social.technet.microsoft.com/Forums/windowsserver/en-US/361fa844-3170-46ff-80b3-37ae4ae40f07/power-shell-script-how-to-selectclick-a-radio-button-?forum=winserverpowershell
-    $myradios = $ie.Document.getElementsByTagName('input') | ? {$_.type -eq 'radio' -and $_.name -eq 'format'}
-    $x = 0 #specific ridio button 
-    $myradios[$x].setActive()
-    $myradios[$x].click()
+    $scraper.ie.ClickRadio0ByTagNameAndName('input', 'format');
 
-    $i=$ie.Document.getElementsByTagName("input")
+    $scraper.ie.ClickAndWaitByTagNameAndName("input", "confirm");
+    $scraper.ie.ClickAndWaitByTagNameAndName("input", "confirm");
 
-    $j = $i | where-object {$_.Name -eq "confirm"}
-    $j.click();
-    while ($ie.Busy -eq $true) {Start-Sleep -Milliseconds 100;}   
-
-    $i=$ie.Document.getElementsByTagName("input")
-    $j = $i | where-object {$_.Name -eq "confirm"}
-    $j.click();
-
-    while ($ie.Busy -eq $true) {Start-Sleep -Milliseconds 100;}   
 
     do {
-        $i=$ie.Document.getElementsByTagName("a")
+        $i=$scraper.ie.ie.Document.getElementsByTagName("a")
 
 #TASK: The where clause fails if there is not attribute node with name 'class'. Check the existance of the attribute node first.
 
@@ -217,7 +196,7 @@ function Get-ConfluenceDownloadUri([string]$projectShortcut, $credential) {
     
     $uri = $j.HREF
 
-    $ie.quit()
+    $scraper.Close();
 
     return $uri
 }
@@ -285,7 +264,9 @@ function Save-AllConfluenceBackups($projectShortcuts, $credential) {
     [string]$outputPathTimestampPath = Join-Path -Path $outputPath -ChildPath $timestamp
     mkdir $outputPathTimestampPath > $null # https://superuser.com/questions/1153961/powershell-silent-mkdir/1154277
     foreach ($projectShortcut in $confluenceProjectShortcuts) {
+
         $uri = Get-ConfluenceDownloadUri -projectShortcut $projectShortcut -credential $confluenceCredential
+
         Write-Host "Backup $projectShortcut..."
         Save-ConfluenceBackup -projectShortcut $projectShortcut -outputDir $outputPathTimestampPath -uri $uri -credential $confluenceCredential
         Write-Host "done."
